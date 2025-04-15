@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT 字幕編輯器</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <!-- 引入 YouTube IFrame Player API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+</head>
+<body>
+    <div id="app">
+        <h1>SRT 字幕編輯器</h1>
+
+        <div class="input-section">
+            <label for="youtube-url">YouTube 影片網址：</label>
+            <input type="text" id="youtube-url" v-model="youtubeUrl" placeholder="貼上 YouTube 網址...">
+            <button @click="loadVideo">載入影片</button>
+        </div>
+
+        <div class="main-content">
+            <div class="player-container">
+                <div id="youtube-player"></div>
+                <p v-if="player && playerReady">目前時間: {{ formatTime(currentTime) }}</p>
+            </div>
+
+            <div class="subtitles-section">
+                <h2>字幕列表</h2>
+                <ul id="subtitle-list">
+                    <li v-for="(sub, index) in sortedSubtitles" :key="sub.id" :class="{ 'incomplete': sub.end === null }">
+                        <div class="subtitle-header">
+                            <span>{{ index + 1 }}.</span>
+                            <span class="timecode">{{ formatTime(sub.start) }}</span> -->
+                            <span class="timecode">{{ sub.end !== null ? formatTime(sub.end) : '...' }}</span>
+                            <button @click="deleteSubtitle(sub.id)" class="delete-btn">刪除</button>
+                        </div>
+                        <textarea v-model="sub.text" placeholder="輸入字幕文字..."></textarea>
+                    </li>
+                    <li v-if="subtitles.length === 0">尚未標記任何字幕。</li>
+                </ul>
+                <button @click="exportSRT" :disabled="!subtitles.length || subtitles.some(s => s.end === null)">匯出 SRT 檔案</button>
+                <p v-if="subtitles.some(s => s.end === null)" class="warning">注意：有未完成的字幕區塊，請標記結束時間後再匯出。</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
