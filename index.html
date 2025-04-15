@@ -26,10 +26,39 @@
                 <p v-if="player && playerReady">目前時間: {{ formatTime(currentTime) }}</p>
             </div>
 
+                <!-- 功能 3: 時間軸編輯器 -->
+                <div id="timeline-editor" v-if="editingSubtitleId !== null && editingSubtitle">
+                    <div class="timeline-container">
+                        <div class="timeline-bar"></div>
+                        <div class="timeline-segment"
+                             :style="timelineSegmentStyle"
+                             >
+                             <div class="timeline-handle handle-start"
+                                  @mousedown="(event) => handleTimelineDragStart(event, 'start')"
+                                  ></div>
+                             <div class="timeline-handle handle-end"
+                                  @mousedown="(event) => handleTimelineDragStart(event, 'end')"
+                                  ></div>
+                        </div>
+                        <div class="timeline-labels">
+                             <span class="label-start">{{ formatTime(editingSubtitle.start) }}</span>
+                             <span class="label-end">{{ formatTime(editingSubtitle.end) }}</span>
+                             <span class="label-range-min">{{ formatTime(timelineRange.min) }}</span>
+                             <span class="label-range-max">{{ formatTime(timelineRange.max) }}</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 結束 功能 3 -->
+
+
             <div class="subtitles-section">
                 <h2>字幕列表</h2>
                 <ul id="subtitle-list">
-                    <li v-for="(sub, index) in sortedSubtitles" :key="sub.id" :class="{ 'incomplete': sub.end === null }">
+                    <li v-for="(sub, index) in sortedSubtitles"
+                        :key="sub.id"
+                        :id="'subtitle-' + sub.id" <!-- 功能 2: 添加唯一 ID -->
+                        :class="{ 'incomplete': sub.end === null, 'active': sub.id === activeSubtitleId }" <!-- 功能 2: 添加 active class -->
+                        >
                         <div class="subtitle-header">
                             <span>{{ index + 1 }}.</span>
                             <span class="timecode">{{ formatTime(sub.start) }}</span> -->
@@ -40,6 +69,7 @@
                     </li>
                     <li v-if="subtitles.length === 0">尚未標記任何字幕。</li>
                 </ul>
+ @focus="selectSubtitleForEdit(sub.id)" @blur="clearTimelineEditDebounced"
                 <button @click="exportSRT" :disabled="!subtitles.length || subtitles.some(s => s.end === null)">匯出 SRT 檔案</button>
                 <p v-if="subtitles.some(s => s.end === null)" class="warning">注意：有未完成的字幕區塊，請標記結束時間後再匯出。</p>
             </div>

@@ -8,6 +8,15 @@ const app = Vue.createApp({
             subtitles: [], // Array of { id: number, start: float, end: float | null, text: string }
             currentTime: 0,
             currentTimeInterval: null, // To update time display
+            activeSubtitleId: null, // --- 功能 2: 目前作用中字幕的 ID ---
+            // --- 功能 3: 時間軸編輯 ---
+            editingSubtitleId: null,
+            timelineRange: { min: 0, max: 0 },
+            draggingHandle: null, // 'start' or 'end'
+            dragStartX: 0,
+            clearTimelineTimeout: null, // For debouncing blur
+            videoDuration: 0, // Store video duration
+            // --- 結束 功能 3 ---
         };
     },
     computed: {
@@ -15,7 +24,43 @@ const app = Vue.createApp({
         sortedSubtitles() {
             // Use slice() to create a shallow copy before sorting
             return this.subtitles.slice().sort((a, b) => a.start - b.start);
+        },
+        // --- 功能 3: 計算屬性 ---
+        editingSubtitle() {
+            if (this.editingSubtitleId === null) return null;
+            return this.subtitles.find(sub => sub.id === this.editingSubtitleId);
+        },
+        timelineSegmentStyle() {
+            if (!this.editingSubtitle || this.timelineRange.max <= this.timelineRange.min) {
+                return { left: '0%', width: '0%', startLabelLeft: '0%', endLabelLeft: '0%' };
+            }
+
+            const rangeDuration = this.timelineRange.max - this.timelineRange.min;
+            const startOffset = this.editingSubtitle.start - this.timelineRange.min;
+            const endOffset = this.editingSubtitle.end !== null ? this.editingSubtitle.end - this.timelineRange.min : rangeDuration; // Handle incomplete subs visually
+
+            const startPercent = (startOffset / rangeDuration) * 100;
+            const endPercent = (endOffset / rangeDuration) * 100;
+            const widthPercent = endPercent - startPercent;
+
+            // Ensure values are within 0-100%
+            const clampedStartPercent = Math.max(0, Math.min(100, startPercent));
+            const clampedWidthPercent = Math.max(0, Math.min(100 - clampedStartPercent, widthPercent));
+
+             // Calculate label positions relative to the timeline bar
+            const startLabelLeftPercent = clampedStartPercent;
+            const endLabelLeftPercent = clampedStartPercent + clampedWidthPercent;
+
+
+            return {
+                left: `${clampedStartPercent}%`,
+                width: `${clampedWidthPercent}%`,
+                 // Pass label positions via style for absolute positioning in CSS
+                '--start-label-left': `${startLabelLeftPercent}%`,
+                '--end-label-left': `${endLabelLeftPercent}%`
+            };
         }
+        // --- 結束 功能 3 ---
     },
     methods: {
         // --- YouTube Player Setup ---
@@ -56,10 +101,33 @@ const app = Vue.createApp({
         onPlayerReady(event) {
             console.log("Player Ready");
             this.playerReady = true;
-            // Start periodically updating the displayed time
+            // --- 功能 3: 獲取影片總長度 ---
+            if (this.player && typeof this.player.getDuration === 'function') {
+                this.videoDuration = this.player.getDuration();
+                console.log("Video duration:", this.videoDuration);
+            }
+            // --- 結束 功能 3 ---
+            // Start periodically updating the displayed time and active subtitle
             this.currentTimeInterval = setInterval(() => {
                 if (this.player && typeof this.player.getCurrentTime === 'function') {
-                    this.currentTime = this.player.getCurrentTime();
+                    const now = this.player.getCurrentTime();
+                    this.currentTime = now;
+
+                    // --- 功能 2: 更新作用中字幕 ID ---
+                    let currentActiveId = null;
+                    // Find the first subtitle that matches the current time
+                    for (const sub of this.sortedSubtitles) {
+                        // Ensure end time is valid for comparison
+                        if (sub.end !== null && now >= sub.start && now < sub.end) {
+                            currentActiveId = sub.id;
+                            break; // Found the active subtitle
+                        }
+                    }
+                    // Update only if the active subtitle has changed
+                    if (this.activeSubtitleId !== currentActiveId) {
+                         this.activeSubtitleId = currentActiveId;
+                    }
+                    // --- 結束 功能 2 ---
                 }
             }, 200); // Update every 200ms
         },
@@ -75,11 +143,25 @@ const app = Vue.createApp({
             }
         },
         loadVideo() {
+            // --- 功能 1: 載入新影片前警告 ---
+            if (this.subtitles.length > 0) {
+                const confirmLoad = confirm("警告：目前的字幕尚未匯出。\n\n若要載入新影片並清除現有字幕，請按「確定」。\n若要先匯出目前的字幕，請按「取消」。");
+                if (!confirmLoad) {
+                    return; // 使用者取消，停止載入
+                }
+            }
+            // --- 結束 功能 1 ---
+
             const extractedId = this.extractVideoId(this.youtubeUrl);
             if (extractedId) {
                 this.videoId = extractedId;
                 this.subtitles = []; // Reset subtitles when loading new video
                 this.currentTime = 0;
+                this.activeSubtitleId = null; // Reset active subtitle
+                // --- 功能 3: 清除時間軸 ---
+                this.editingSubtitleId = null;
+                this.videoDuration = 0; // Reset duration until player is ready
+                // --- 結束 功能 3 ---
                 if (window.YT && window.YT.Player) { // Check if API is loaded
                     if (this.player && this.playerReady) {
                         console.log("Loading new video:", this.videoId);
@@ -195,6 +277,9 @@ const app = Vue.createApp({
             }
 
             this.sortSubtitles(); // Ensure list is always sorted
+             // --- 功能 3: 標記時間戳後清除時間軸 (簡化處理) ---
+            this.clearTimelineEdit(); // Use the method to handle potential debounce
+             // --- 結束 功能 3 ---
         },
 
         sortSubtitles() {
@@ -202,6 +287,11 @@ const app = Vue.createApp({
         },
 
         deleteSubtitle(id) {
+            // --- 功能 3: 如果刪除的是正在編輯的字幕，清除時間軸 ---
+            if (this.editingSubtitleId === id) {
+                 this.clearTimelineEdit(); // Use the method
+            }
+             // --- 結束 功能 3 ---
             this.subtitles = this.subtitles.filter(sub => sub.id !== id);
             // No need to re-sort if just deleting
         },
@@ -307,17 +397,187 @@ const app = Vue.createApp({
                     this.markTimestamp();
                     break;
             }
+        },
+
+        // --- 功能 3: 時間軸編輯方法 ---
+        selectSubtitleForEdit(id) {
+            // Clear any pending blur timeout
+            if (this.clearTimelineTimeout) {
+                clearTimeout(this.clearTimelineTimeout);
+                this.clearTimelineTimeout = null;
+            }
+
+            const sub = this.subtitles.find(s => s.id === id);
+            if (sub) {
+                this.editingSubtitleId = id;
+                const buffer = 15; // 15 seconds buffer
+                const minTime = Math.max(0, sub.start - buffer);
+                // Use video duration if available, otherwise estimate based on end time
+                const maxEndTime = sub.end !== null ? sub.end : sub.start + 5; // Estimate 5s if no end
+                const maxTime = this.videoDuration > 0
+                                ? Math.min(this.videoDuration, maxEndTime + buffer)
+                                : maxEndTime + buffer;
+
+                this.timelineRange = {
+                    min: minTime,
+                    max: maxTime
+                };
+                console.log(`Editing subtitle ${id}, timeline range: ${minTime.toFixed(2)} - ${maxTime.toFixed(2)}`);
+            }
+        },
+        clearTimelineEdit() {
+             // Only clear if not currently dragging
+            if (!this.draggingHandle) {
+                this.editingSubtitleId = null;
+                this.timelineRange = { min: 0, max: 0 };
+                 console.log("Timeline edit cleared");
+            }
+        },
+         clearTimelineEditDebounced() {
+            // Debounce clearing to allow clicks on handles/timeline
+            if (this.clearTimelineTimeout) {
+                clearTimeout(this.clearTimelineTimeout);
+            }
+            this.clearTimelineTimeout = setTimeout(() => {
+                this.clearTimelineEdit();
+                this.clearTimelineTimeout = null;
+            }, 300); // 300ms delay
+        },
+        handleTimelineDragStart(event, handleType) {
+            if (!this.editingSubtitle) return;
+             // Prevent blur when clicking handle
+            if (this.clearTimelineTimeout) {
+                clearTimeout(this.clearTimelineTimeout);
+                this.clearTimelineTimeout = null;
+            }
+
+            this.draggingHandle = handleType;
+            this.dragStartX = event.clientX;
+            document.addEventListener('mousemove', this.handleTimelineDragMove);
+            document.addEventListener('mouseup', this.handleTimelineDragEnd);
+            event.preventDefault(); // Prevent text selection
+            event.stopPropagation(); // Prevent triggering other events
+            console.log(`Drag start: ${handleType}`);
+        },
+        handleTimelineDragMove(event) {
+            if (!this.draggingHandle || !this.editingSubtitle) return;
+
+            const timelineElement = document.querySelector('#timeline-editor .timeline-bar');
+            if (!timelineElement) return;
+
+            const timelineRect = timelineElement.getBoundingClientRect();
+            const timelineWidth = timelineRect.width;
+            const rangeDuration = this.timelineRange.max - this.timelineRange.min;
+
+            // Calculate movement in pixels and corresponding time change
+            const deltaX = event.clientX - this.dragStartX;
+            const deltaTime = (deltaX / timelineWidth) * rangeDuration;
+
+            // Calculate the potential new time
+            let newTime;
+            if (this.draggingHandle === 'start') {
+                newTime = this.editingSubtitle.start + deltaTime;
+                // Clamp time: >= 0, >= range.min, < current end time
+                newTime = Math.max(0, this.timelineRange.min, newTime);
+                if (this.editingSubtitle.end !== null) {
+                    newTime = Math.min(newTime, this.editingSubtitle.end - 0.01); // Ensure start < end
+                }
+            } else { // dragging 'end'
+                 if (this.editingSubtitle.end === null) return; // Cannot drag end if not set
+                newTime = this.editingSubtitle.end + deltaTime;
+                // Clamp time: > current start time, <= range.max, <= videoDuration
+                newTime = Math.max(newTime, this.editingSubtitle.start + 0.01); // Ensure end > start
+                newTime = Math.min(newTime, this.timelineRange.max);
+                 if (this.videoDuration > 0) {
+                    newTime = Math.min(newTime, this.videoDuration);
+                }
+            }
+
+             // Update the subtitle time (Vue reactivity handles the UI)
+            if (this.draggingHandle === 'start') {
+                 this.editingSubtitle.start = newTime;
+            } else {
+                 this.editingSubtitle.end = newTime;
+            }
+
+            // Update dragStartX for the next move event to calculate relative movement
+            this.dragStartX = event.clientX;
+
+             // Optional: Update timeline range dynamically if handle goes near edge? (More complex)
+             // For now, keep the initial range.
+
+             // Update the displayed current time to match the handle being dragged
+             this.currentTime = newTime;
+             // Seek player to the new time for immediate feedback
+             if (this.playerReady) {
+                 this.player.seekTo(newTime, true);
+             }
+        },
+        handleTimelineDragEnd(event) {
+            if (!this.draggingHandle) return;
+            console.log(`Drag end: ${this.draggingHandle}`);
+            this.draggingHandle = null;
+            document.removeEventListener('mousemove', this.handleTimelineDragMove);
+            document.removeEventListener('mouseup', this.handleTimelineDragEnd);
+            this.sortSubtitles(); // Re-sort in case times changed order
+             // Re-focus the textarea after dragging? Maybe not necessary.
+             // Trigger the debounced clear in case focus was lost during drag
+             this.clearTimelineEditDebounced();
+        },
+        getVideoDuration() {
+            if (this.playerReady && typeof this.player.getDuration === 'function') {
+                return this.player.getDuration();
+            }
+            return 0;
         }
+        // --- 結束 功能 3 ---
+    },
+    watch: {
+        // --- 功能 2: 監聽 activeSubtitleId 變化並捲動 ---
+        activeSubtitleId(newId, oldId) {
+            if (newId !== null) {
+                this.$nextTick(() => {
+                    const listElement = document.getElementById('subtitle-list');
+                    const activeElement = document.getElementById(`subtitle-${newId}`);
+                    if (activeElement && listElement) {
+                        // Check if element is already fully visible
+                        const listRect = listElement.getBoundingClientRect();
+                        const activeRect = activeElement.getBoundingClientRect();
+
+                        if (activeRect.top < listRect.top || activeRect.bottom > listRect.bottom) {
+                             activeElement.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'nearest' // 'center', 'start', 'end', 'nearest'
+                            });
+                        }
+                    }
+                });
+            }
+        }
+        // --- 結束 功能 2 ---
     },
     mounted() {
         // Initialize YouTube API loading as soon as Vue app is mounted
         this.initializeYouTubeAPI();
         // Add global keyboard listener
         window.addEventListener('keydown', this.handleKeyDown);
+        // --- 功能 3: Add global mouseup listener for drag end outside window ---
+        // Note: This might conflict if other components use global mouseup
+        // A more robust solution might involve a temporary overlay during drag
+        // window.addEventListener('mouseup', this.handleTimelineDragEnd);
+        // Let's rely on the one added during drag start for now.
     },
     beforeUnmount() {
         // Clean up global keyboard listener
         window.removeEventListener('keydown', this.handleKeyDown);
+        // --- 功能 3: Clean up potential global mouse listeners ---
+        document.removeEventListener('mousemove', this.handleTimelineDragMove);
+        document.removeEventListener('mouseup', this.handleTimelineDragEnd);
+        // window.removeEventListener('mouseup', this.handleTimelineDragEnd); // If global listener was added
+        if (this.clearTimelineTimeout) {
+             clearTimeout(this.clearTimelineTimeout); // Clear any pending blur timeout
+        }
+        // --- 結束 功能 3 ---
         // Clean up player and interval
         if (this.player) {
             this.player.destroy();

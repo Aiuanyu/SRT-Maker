@@ -119,6 +119,12 @@ h1, h2 {
     border-left: 3px solid #ffc107; /* Highlight incomplete */
 }
 
+
+/* 功能 2: 作用中字幕的樣式 */
+#subtitle-list li.active {
+    background-color: #e7f3ff; /* 淡藍色背景 */
+    border-left-color: #007bff; /* 藍色左邊框 */
+}
 .subtitle-header {
     display: flex;
     align-items: center;
@@ -174,6 +180,104 @@ h1, h2 {
      .player-container p {
          position: static; /* Reset position for stacked layout */
          text-align: center;
+
+
+/* --- 功能 3: 時間軸編輯器樣式 --- */
+#timeline-editor {
+    margin-top: 15px; /* Space below player */
+    padding: 15px;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.timeline-container {
+    position: relative;
+    width: 100%;
+    height: 40px; /* Total height including labels */
+}
+
+.timeline-bar {
+    position: absolute;
+    top: 10px; /* Position the bar */
+    left: 0;
+    width: 100%;
+    height: 6px;
+    background-color: #ccc;
+    border-radius: 3px;
+}
+
+.timeline-segment {
+    position: absolute;
+    top: 8px; /* Align slightly above bar center */
+    height: 10px; /* Make segment thicker */
+    background-color: #007bff; /* Blue color for the segment */
+    border-radius: 5px;
+    cursor: grab;
+    z-index: 1;
+}
+
+.timeline-handle {
+    position: absolute;
+    top: -3px; /* Center vertically on the segment */
+    width: 16px;
+    height: 16px;
+    background-color: #0056b3; /* Darker blue */
+    border: 1px solid #fff;
+    border-radius: 50%;
+    cursor: ew-resize; /* East-West resize cursor */
+    z-index: 2;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+.handle-start {
+    left: -8px; /* Position half outside */
+}
+
+.handle-end {
+    right: -8px; /* Position half outside */
+}
+
+.timeline-labels {
+    position: absolute;
+    top: 25px; /* Below the timeline bar */
+    left: 0;
+    width: 100%;
+    font-size: 0.8em;
+    color: #555;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 5px; /* Small padding */
+    box-sizing: border-box;
+}
+
+.timeline-labels .label-start,
+.timeline-labels .label-end {
+    font-weight: bold;
+    color: #0056b3;
+}
+
+/* Adjust label positioning slightly if needed */
+.label-range-min {
+    position: absolute;
+    left: 5px;
+}
+.label-range-max {
+    position: absolute;
+    right: 5px;
+}
+.label-start {
+     position: absolute; /* Position based on segment */
+     /* Left position will be set dynamically via style */
+     transform: translateX(-50%); /* Center the label */
+}
+.label-end {
+     position: absolute; /* Position based on segment */
+     /* Left position will be set dynamically via style */
+     transform: translateX(-50%); /* Center the label */
+}
+/* --- 結束 功能 3 --- */
+
          margin-top: 10px;
      }
     .subtitles-section {
