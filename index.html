@@ -56,7 +56,7 @@
                 <ul id="subtitle-list">
                     <li v-for="(sub, index) in sortedSubtitles"
                         :key="sub.id"
-                        :id="'subtitle-' + sub.id" <!-- 功能 2: 添加唯一 ID -->
+                        :id="sub.id" <!-- 修正 DOMException: 直接使用帶前綴的 sub.id -->
                         :class="{ 'incomplete': sub.end === null, 'active': sub.id === activeSubtitleId }" <!-- 功能 2: 添加 active class -->
                         >
                         <div class="subtitle-header">
@@ -65,11 +65,14 @@
                             <span class="timecode">{{ sub.end !== null ? formatTime(sub.end) : '...' }}</span>
                             <button @click="deleteSubtitle(sub.id)" class="delete-btn">刪除</button>
                         </div>
-                        <textarea v-model="sub.text" placeholder="輸入字幕文字..."></textarea>
+                        <textarea v-model="sub.text"
+                                  placeholder="輸入字幕文字..."
+                                  @focus="selectSubtitleForEdit(sub.id)"
+                                  @blur="clearTimelineEditDebounced"
+                                  ></textarea>
                     </li>
                     <li v-if="subtitles.length === 0">尚未標記任何字幕。</li>
                 </ul>
- @focus="selectSubtitleForEdit(sub.id)" @blur="clearTimelineEditDebounced"
                 <button @click="exportSRT" :disabled="!subtitles.length || subtitles.some(s => s.end === null)">匯出 SRT 檔案</button>
                 <p v-if="subtitles.some(s => s.end === null)" class="warning">注意：有未完成的字幕區塊，請標記結束時間後再匯出。</p>
             </div>

@@ -16,6 +16,7 @@ const app = Vue.createApp({
             dragStartX: 0,
             clearTimelineTimeout: null, // For debouncing blur
             videoDuration: 0, // Store video duration
+            nextSubtitleIdCounter: 1, // --- 新增: 用於生成字幕 ID 的計數器 ---
             // --- 結束 功能 3 ---
         };
     },
@@ -220,7 +221,11 @@ const app = Vue.createApp({
                 if (currentTime > lastSub.start) {
                     lastSub.end = currentTime;
                     console.log(`Marked end for sub ${lastSub.id} at ${currentTime}`);
-                    this.sortSubtitles(); // Keep sorted after modification
+                    // --- 修正 TypeError: 使用 nextTick 確保更新後再排序 ---
+                    this.$nextTick(() => {
+                        this.sortSubtitles(); // Keep sorted after modification
+                    });
+                    // --- 結束修正 ---
                     return; // Task done
                 } else {
                     // Trying to mark end before start, ignore or alert
@@ -245,7 +250,7 @@ const app = Vue.createApp({
 
                     // Create the new subtitle block
                     const newSub = {
-                        id: Date.now(), // Simple unique ID
+                        id: 'sub_' + this.nextSubtitleIdCounter++, // --- 改用計數器生成 ID ---
                         start: currentTime,
                         end: originalEnd,
                         text: "" // New block starts with empty text
@@ -268,7 +273,7 @@ const app = Vue.createApp({
 
                 console.log(`Marking new start at ${currentTime}`);
                 const newSub = {
-                    id: Date.now(),
+                    id: 'sub_' + this.nextSubtitleIdCounter++, // --- 改用計數器生成 ID ---
                     start: currentTime,
                     end: null, // Mark as incomplete
                     text: ""
@@ -538,7 +543,9 @@ const app = Vue.createApp({
             if (newId !== null) {
                 this.$nextTick(() => {
                     const listElement = document.getElementById('subtitle-list');
-                    const activeElement = document.getElementById(`subtitle-${newId}`);
+                    // --- 修正 DOMException: 使用帶前綴的 ID ---
+                    const activeElement = document.getElementById(newId); // ID 已經包含 'sub_' 前綴
+                    // --- 結束修正 ---
                     if (activeElement && listElement) {
                         // Check if element is already fully visible
                         const listRect = listElement.getBoundingClientRect();
