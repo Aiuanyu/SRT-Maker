@@ -130,7 +130,9 @@ const app = Vue.createApp({
           // --- 功能 2: 更新作用中字幕 ID ---
           let currentActiveId = null;
           // Find the first subtitle that matches the current time
-          for (const sub of this.sortedSubtitles) {
+          // Use the computed sortedSubtitles for efficiency if possible, but direct iteration is fine too
+          for (const sub of this.subtitles) {
+            // Iterate original array, order might matter less here
             // Ensure end time is valid for comparison
             if (sub.end !== null && now >= sub.start && now < sub.end) {
               currentActiveId = sub.id;
@@ -156,7 +158,9 @@ const app = Vue.createApp({
         event.data === YT.PlayerState.ENDED
       ) {
         // Maybe ensure final time update when paused/ended
-        this.currentTime = this.player.getCurrentTime();
+        if (this.player && typeof this.player.getCurrentTime === 'function') {
+          this.currentTime = this.player.getCurrentTime();
+        }
       }
     },
     loadVideo() {
@@ -177,6 +181,7 @@ const app = Vue.createApp({
         this.subtitles = []; // Reset subtitles when loading new video
         this.currentTime = 0;
         this.activeSubtitleId = null; // Reset active subtitle
+        this.nextSubtitleIdCounter = 1; // Reset ID counter
         // --- 功能 3: 清除時間軸 ---
         this.editingSubtitleId = null;
         this.videoDuration = 0; // Reset duration until player is ready
@@ -185,7 +190,11 @@ const app = Vue.createApp({
           // Check if API is loaded
           if (this.player && this.playerReady) {
             console.log('Loading new video:', this.videoId);
-            this.player.loadVideoById(this.videoId);
+            // Stop playback before loading new video to prevent state issues
+            this.player.stopVideo();
+            // Reset player ready state temporarily
+            this.playerReady = false;
+            this.player.loadVideoById(videoId);
           } else {
             console.log('API ready, creating player');
             this.createPlayer(this.videoId); // Create player if it doesn't exist yet
@@ -203,11 +212,17 @@ const app = Vue.createApp({
     extractVideoId(url) {
       // Regular expression to find YouTube video ID from various URL formats
       const regExp =
-        /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+        /^.*(?:(?:youtu\.be\/|v\/|vi\/|u\/\w\/|embed\/|shorts\/)|(?:(?:watch)?\?v(?:i)?=|\&v(?:i)?=))([^#\&\?]*).*/;
       const match = url.match(regExp);
-      if (match && match[2].length === 11) {
-        return match[2];
+      if (match && match[1].length === 11) {
+        return match[1];
       } else {
+        // Try another pattern for youtu.be shortlinks if the first failed
+        const shortRegExp = /youtu\.be\/([^#\&\?]{11})/;
+        const shortMatch = url.match(shortRegExp);
+        if (shortMatch && shortMatch[1]) {
+          return shortMatch[1];
+        }
         return null; // Invalid URL or no video ID found
       }
     },
@@ -225,10 +240,15 @@ const app = Vue.createApp({
     seekRelative(seconds) {
       if (!this.playerReady) return;
       const currentTime = this.player.getCurrentTime();
-      this.player.seekTo(currentTime + seconds, true);
+      let newTime = currentTime + seconds;
+      // Clamp time between 0 and video duration
+      newTime = Math.max(0, newTime);
+      if (this.videoDuration > 0) {
+        newTime = Math.min(newTime, this.videoDuration);
+      }
+      this.player.seekTo(newTime, true);
       // Immediately update displayed time after seeking
-      this.currentTime = this.player.getCurrentTime() + seconds;
-      if (this.currentTime < 0) this.currentTime = 0;
+      this.currentTime = newTime;
     },
 
     // --- Subtitle Management ---
@@ -238,19 +258,20 @@ const app = Vue.createApp({
       console.log(`Tab pressed at: ${currentTime}`);
 
       // 1. Check if we need to complete the last subtitle
-      const lastSub =
-        this.subtitles.length > 0
-          ? this.subtitles[this.subtitles.length - 1]
-          : null;
+      // Find the last subtitle regardless of sorting, as we are potentially modifying it
+      const lastSubIndex = this.subtitles.length - 1;
+      const lastSub = lastSubIndex >= 0 ? this.subtitles[lastSubIndex] : null;
+
       if (lastSub && lastSub.end === null) {
         if (currentTime > lastSub.start) {
           lastSub.end = currentTime;
           console.log(`Marked end for sub ${lastSub.id} at ${currentTime}`);
-          // --- 修正 TypeError: 使用 nextTick 確保更新後再排序 ---
-          this.$nextTick(() => {
-            this.sortSubtitles(); // Keep sorted after modification
-          });
+          // --- 修正 TypeError: 直接呼叫排序，移除 $nextTick ---
+          this.sortSubtitles(); // Keep sorted after modification
           // --- 結束修正 ---
+          // --- 功能 3: 標記結束後清除時間軸 ---
+          this.clearTimelineEdit();
+          // --- 結束 功能 3 ---
           return; // Task done
         } else {
           // Trying to mark end before start, ignore or alert
@@ -261,7 +282,8 @@ const app = Vue.createApp({
 
       // 2. Check if the current time overlaps/splits an existing subtitle
       let splitOccurred = false;
-      for (let i = 0; i < this.subtitles.length; i++) {
+      // Iterate backwards to simplify splice index if splitting
+      for (let i = this.subtitles.length - 1; i >= 0; i--) {
         const sub = this.subtitles[i];
         // Ensure end is not null before checking overlap
         if (
@@ -287,13 +309,17 @@ const app = Vue.createApp({
           // Insert the new subtitle right after the split one
           this.subtitles.splice(i + 1, 0, newSub);
           splitOccurred = true;
+          // --- 功能 3: 分割後清除時間軸 ---
+          this.clearTimelineEdit();
+          // --- 結束 功能 3 ---
           break; // Stop checking after first split
         }
       }
 
       // 3. If no split occurred and no subtitle was completed, start a new one
-      if (!splitOccurred && !(lastSub && lastSub.end === null)) {
+      if (!splitOccurred) {
         // Additional check: Don't allow marking start if it's before the end of the previous *complete* subtitle
+        // Use the computed property for checking against the *sorted* list
         const lastCompleteSub = this.sortedSubtitles
           .slice()
           .reverse()
@@ -315,16 +341,35 @@ const app = Vue.createApp({
           text: '',
         };
         this.subtitles.push(newSub);
+        // --- 功能 3: 標記新開始後清除時間軸 ---
+        this.clearTimelineEdit();
+        // --- 結束 功能 3 ---
       }
 
-      this.sortSubtitles(); // Ensure list is always sorted
-      // --- 功能 3: 標記時間戳後清除時間軸 (簡化處理) ---
-      this.clearTimelineEdit(); // Use the method to handle potential debounce
-      // --- 結束 功能 3 ---
+      this.sortSubtitles(); // Ensure list is always sorted after any modification
     },
 
     sortSubtitles() {
-      this.subtitles.sort((a, b) => a.start - b.start);
+      // Check if subtitles array exists before sorting
+      if (this.subtitles && Array.isArray(this.subtitles)) {
+        this.subtitles.sort((a, b) => {
+          // Basic check for valid objects and start property
+          if (
+            a &&
+            typeof a.start === 'number' &&
+            b &&
+            typeof b.start === 'number'
+          ) {
+            return a.start - b.start;
+          }
+          // Handle potential invalid entries gracefully (e.g., put them at the end)
+          if (!a || typeof a.start !== 'number') return 1;
+          if (!b || typeof b.start !== 'number') return -1;
+          return 0;
+        });
+      } else {
+        console.error('Attempted to sort non-array or null subtitles.');
+      }
     },
 
     deleteSubtitle(id) {
@@ -339,8 +384,12 @@ const app = Vue.createApp({
 
     // --- SRT Export ---
     formatTime(totalSeconds) {
-      if (totalSeconds === null || typeof totalSeconds === 'undefined')
-        return '...';
+      if (
+        totalSeconds === null ||
+        typeof totalSeconds === 'undefined' ||
+        isNaN(totalSeconds)
+      )
+        return '00:00:00,000'; // Return default format on invalid input
       const hours = Math.floor(totalSeconds / 3600);
       const minutes = Math.floor((totalSeconds % 3600) / 60);
       const seconds = Math.floor(totalSeconds % 60);
@@ -359,11 +408,11 @@ const app = Vue.createApp({
 
     exportSRT() {
       const completeSubtitles = this.sortedSubtitles.filter(
-        (sub) => sub.end !== null
-      );
+        (sub) => sub.end !== null && sub.start < sub.end
+      ); // Ensure start < end
 
       if (completeSubtitles.length === 0) {
-        alert('沒有可匯出的完整字幕。');
+        alert('沒有可匯出的有效字幕 (開始時間需小於結束時間)。');
         return;
       }
 
@@ -378,29 +427,49 @@ const app = Vue.createApp({
       });
 
       // Create a Blob and download link
-      const blob = new Blob([srtContent], { type: 'text/srt;charset=utf-8;' });
-      const link = document.createElement('a');
-
-      const url = URL.createObjectURL(blob);
-      link.setAttribute('href', url);
-      link.setAttribute('download', 'subtitles.srt');
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url); // Clean up
+      try {
+        const blob = new Blob([srtContent], {
+          type: 'text/srt;charset=utf-8;',
+        });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        // Try to get video title for filename
+        let filename = 'subtitles.srt';
+        if (this.player && typeof this.player.getVideoData === 'function') {
+          const videoTitle = this.player.getVideoData().title;
+          if (videoTitle) {
+            // Sanitize filename (replace invalid chars)
+            filename =
+              videoTitle.replace(/[<>:"/\\|?*]+/g, '_').substring(0, 50) +
+              '.srt';
+          }
+        }
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url); // Clean up
+      } catch (e) {
+        console.error('Error creating or downloading SRT file:', e);
+        alert('匯出 SRT 時發生錯誤。請檢查主控台獲取更多資訊。');
+      }
     },
 
     // --- Keyboard Event Handling ---
     handleKeyDown(event) {
-      // Don't capture keys if typing in input/textarea
-      if (
-        event.target.tagName === 'INPUT' ||
-        event.target.tagName === 'TEXTAREA'
-      ) {
-        // Allow Tab default behavior within textareas
-        if (event.key === 'Tab' && event.target.tagName === 'TEXTAREA') {
-          return;
+      const activeElement = document.activeElement;
+      const isInputFocused =
+        activeElement &&
+        (activeElement.tagName === 'INPUT' ||
+          activeElement.tagName === 'TEXTAREA');
+
+      // Allow default behavior if typing in input/textarea, except for specific overrides
+      if (isInputFocused) {
+        // Allow Tab default behavior ONLY within textareas
+        if (event.key === 'Tab' && activeElement.tagName === 'TEXTAREA') {
+          return; // Do not prevent default for Tab in textarea
         }
         // Allow arrows within input/textarea
         if (
@@ -408,45 +477,78 @@ const app = Vue.createApp({
             event.key
           )
         ) {
+          return; // Do not prevent default for arrows in inputs
+        }
+        // Allow space within input/textarea (but Space might still trigger play/pause if not handled carefully)
+        if (event.code === 'Space' && activeElement.tagName === 'TEXTAREA') {
+          // Let space work in textarea, but we might still want to prevent page scroll below
+          // return; // If we return here, space won't toggle play/pause
+        }
+        // Allow Enter in URL input to trigger loadVideo
+        if (event.key === 'Enter' && activeElement.id === 'youtube-url') {
+          event.preventDefault(); // Prevent form submission if any
+          this.loadVideo();
           return;
         }
-        // Allow space within input/textarea
-        if (event.code === 'Space' && event.target.tagName === 'TEXTAREA') {
-          return;
-        }
+        // If it's not one of the allowed keys above while input is focused,
+        // check if it's one of our global hotkeys (Space, Arrows, Tab)
+        // If it IS a global hotkey, we *might* want it to act globally even if input is focused
+        // (e.g., Space always toggles play/pause). This depends on desired UX.
+
+        // Current logic: If focused, only Tab (outside textarea) and potentially Space/Arrows (outside textareas/inputs) are captured below.
       }
 
-      // If player isn't ready, only allow loading video? Maybe better to just ignore other keys.
-      if (!this.playerReady && event.key !== 'Enter' /* Allow Enter maybe? */) {
-        // Only handle keys if player is usable
-        // Let's block keys if player not ready, except maybe within URL input
-        if (event.target.id !== 'youtube-url') {
+      // Player must be ready for most actions
+      if (!this.playerReady) {
+        // Allow Enter in URL input even if player not ready
+        if (
+          !(
+            event.key === 'Enter' &&
+            activeElement &&
+            activeElement.id === 'youtube-url'
+          )
+        ) {
           console.log('Player not ready, ignoring keypress:', event.key);
-          // event.preventDefault(); // Careful with preventing default everywhere
           return;
         }
       }
 
+      // Global Hotkeys
       switch (event.code) {
         case 'Space':
-          event.preventDefault(); // Prevent page scrolling
+          // Prevent page scrolling ONLY if an input is NOT focused
+          // Or maybe always prevent scroll, but allow space typing? Needs careful thought.
+          // Let's prevent scroll unless it's a textarea.
+          if (!isInputFocused || activeElement.tagName !== 'TEXTAREA') {
+            event.preventDefault();
+          }
+          // Toggle play/pause regardless of focus? (Common media player behavior)
           this.togglePlayPause();
           break;
         case 'ArrowLeft':
-          event.preventDefault(); // Prevent default browser behavior
-          this.seekRelative(-5);
+          // Prevent default browser behavior (like scrolling) ONLY if input not focused
+          if (!isInputFocused) {
+            event.preventDefault();
+            this.seekRelative(-5);
+          }
           break;
         case 'ArrowRight':
-          event.preventDefault(); // Prevent default browser behavior
-          this.seekRelative(5);
+          // Prevent default browser behavior ONLY if input not focused
+          if (!isInputFocused) {
+            event.preventDefault();
+            this.seekRelative(5);
+          }
           break;
         case 'Tab':
           // Prevent default tab behavior (changing focus)
-          // UNLESS the focus is inside a textarea (handled above)
-          if (event.target.tagName !== 'TEXTAREA') {
+          // UNLESS the focus is inside a textarea (handled by the check at the top)
+          if (!isInputFocused || activeElement.tagName !== 'TEXTAREA') {
             event.preventDefault();
+            this.markTimestamp();
+          } else {
+            // If inside textarea, allow default tab (or handle indent if needed)
+            // The check at the top already returns, so this else might be redundant
           }
-          this.markTimestamp();
           break;
       }
     },
@@ -471,14 +573,17 @@ const app = Vue.createApp({
             ? Math.min(this.videoDuration, maxEndTime + buffer)
             : maxEndTime + buffer;
 
-        this.timelineRange = {
-          min: minTime,
-          max: maxTime,
-        };
+        // Ensure min is less than max
+        if (minTime >= maxTime) {
+          this.timelineRange = { min: minTime, max: minTime + buffer * 2 }; // Adjust if invalid range
+        } else {
+          this.timelineRange = { min: minTime, max: maxTime };
+        }
+
         console.log(
-          `Editing subtitle ${id}, timeline range: ${minTime.toFixed(
+          `Editing subtitle ${id}, timeline range: ${this.timelineRange.min.toFixed(
             2
-          )} - ${maxTime.toFixed(2)}`
+          )} - ${this.timelineRange.max.toFixed(2)}`
         );
       }
     },
@@ -486,7 +591,8 @@ const app = Vue.createApp({
       // Only clear if not currently dragging
       if (!this.draggingHandle) {
         this.editingSubtitleId = null;
-        this.timelineRange = { min: 0, max: 0 };
+        // Reset range, maybe not necessary to set to 0,0
+        // this.timelineRange = { min: 0, max: 0 };
         console.log('Timeline edit cleared');
       }
     },
@@ -509,81 +615,134 @@ const app = Vue.createApp({
       }
 
       this.draggingHandle = handleType;
-      this.dragStartX = event.clientX;
+      // Use pageX for consistency across browsers if clientX causes issues
+      this.dragStartX = event.pageX || event.clientX;
       document.addEventListener('mousemove', this.handleTimelineDragMove);
       document.addEventListener('mouseup', this.handleTimelineDragEnd);
-      event.preventDefault(); // Prevent text selection
+      // Add touch events for mobile compatibility
+      document.addEventListener('touchmove', this.handleTimelineDragMove, {
+        passive: false,
+      }); // Prevent scroll on touch
+      document.addEventListener('touchend', this.handleTimelineDragEnd);
+
+      event.preventDefault(); // Prevent text selection and default drag behavior
       event.stopPropagation(); // Prevent triggering other events
       console.log(`Drag start: ${handleType}`);
     },
     handleTimelineDragMove(event) {
       if (!this.draggingHandle || !this.editingSubtitle) return;
 
-      const timelineElement = document.querySelector(
-        '#timeline-editor .timeline-bar'
-      );
-      if (!timelineElement) return;
+      // Prevent default touch behavior (like scrolling)
+      if (event.touches) {
+        event.preventDefault();
+      }
+
+      const timelineElement = this.$refs.timelineBar; // Use ref if possible
+      // const timelineElement = document.querySelector('#timeline-editor .timeline-bar'); // Fallback
+      if (!timelineElement) {
+        console.error('Timeline bar element not found.');
+        return;
+      }
 
       const timelineRect = timelineElement.getBoundingClientRect();
       const timelineWidth = timelineRect.width;
-      const rangeDuration = this.timelineRange.max - this.timelineRange.min;
+      if (timelineWidth <= 0) return; // Avoid division by zero
 
-      // Calculate movement in pixels and corresponding time change
-      const deltaX = event.clientX - this.dragStartX;
+      const rangeDuration = this.timelineRange.max - this.timelineRange.min;
+      if (rangeDuration <= 0) return; // Avoid division by zero
+
+      // Get current X position from mouse or touch event
+      const currentX =
+        event.pageX ||
+        event.clientX ||
+        (event.touches && event.touches[0].pageX);
+      if (typeof currentX !== 'number') return; // Exit if no valid coordinate
+
+      // Calculate movement relative to the start of the drag
+      const deltaX = currentX - this.dragStartX;
       const deltaTime = (deltaX / timelineWidth) * rangeDuration;
 
-      // Calculate the potential new time
-      let newTime;
+      // --- Refactored time update logic ---
+      let originalTime =
+        this.draggingHandle === 'start'
+          ? this.editingSubtitle._originalStart || this.editingSubtitle.start
+          : this.editingSubtitle._originalEnd || this.editingSubtitle.end;
+
+      // Store original time on first move if not already stored
+      if (
+        this.draggingHandle === 'start' &&
+        typeof this.editingSubtitle._originalStart === 'undefined'
+      ) {
+        this.editingSubtitle._originalStart = this.editingSubtitle.start;
+        originalTime = this.editingSubtitle.start;
+      } else if (
+        this.draggingHandle === 'end' &&
+        typeof this.editingSubtitle._originalEnd === 'undefined'
+      ) {
+        this.editingSubtitle._originalEnd = this.editingSubtitle.end;
+        originalTime = this.editingSubtitle.end;
+      }
+
+      // Calculate the potential new time based on original time + delta
+      let newTime = originalTime + deltaTime;
+
+      // Clamp time based on handle type and boundaries
       if (this.draggingHandle === 'start') {
-        newTime = this.editingSubtitle.start + deltaTime;
-        // Clamp time: >= 0, >= range.min, < current end time
+        // Clamp: >= 0, >= range.min, < current end time (or estimated end if null)
         newTime = Math.max(0, this.timelineRange.min, newTime);
         if (this.editingSubtitle.end !== null) {
           newTime = Math.min(newTime, this.editingSubtitle.end - 0.01); // Ensure start < end
+        } else {
+          // If end is null, maybe clamp based on video duration? Or just allow going positive?
+          if (this.videoDuration > 0) {
+            newTime = Math.min(newTime, this.videoDuration);
+          }
         }
+        this.editingSubtitle.start = newTime;
       } else {
         // dragging 'end'
-        if (this.editingSubtitle.end === null) return; // Cannot drag end if not set
-        newTime = this.editingSubtitle.end + deltaTime;
-        // Clamp time: > current start time, <= range.max, <= videoDuration
+        if (this.editingSubtitle.end === null) return; // Cannot drag end if not set yet
+        // Clamp: > current start time, <= range.max, <= videoDuration
         newTime = Math.max(newTime, this.editingSubtitle.start + 0.01); // Ensure end > start
         newTime = Math.min(newTime, this.timelineRange.max);
         if (this.videoDuration > 0) {
           newTime = Math.min(newTime, this.videoDuration);
         }
-      }
-
-      // Update the subtitle time (Vue reactivity handles the UI)
-      if (this.draggingHandle === 'start') {
-        this.editingSubtitle.start = newTime;
-      } else {
         this.editingSubtitle.end = newTime;
       }
 
-      // Update dragStartX for the next move event to calculate relative movement
-      this.dragStartX = event.clientX;
-
       // Optional: Update timeline range dynamically if handle goes near edge? (More complex)
-      // For now, keep the initial range.
 
       // Update the displayed current time to match the handle being dragged
       this.currentTime = newTime;
-      // Seek player to the new time for immediate feedback
+      // Seek player to the new time for immediate feedback (throttle this?)
       if (this.playerReady) {
+        // Optional: Throttle seekTo calls if performance is an issue
         this.player.seekTo(newTime, true);
       }
     },
     handleTimelineDragEnd(event) {
       if (!this.draggingHandle) return;
       console.log(`Drag end: ${this.draggingHandle}`);
+
+      // Clean up temporary original time properties
+      if (this.editingSubtitle) {
+        delete this.editingSubtitle._originalStart;
+        delete this.editingSubtitle._originalEnd;
+      }
+
       this.draggingHandle = null;
       document.removeEventListener('mousemove', this.handleTimelineDragMove);
       document.removeEventListener('mouseup', this.handleTimelineDragEnd);
+      // Remove touch listeners
+      document.removeEventListener('touchmove', this.handleTimelineDragMove);
+      document.removeEventListener('touchend', this.handleTimelineDragEnd);
+
       this.sortSubtitles(); // Re-sort in case times changed order
-      // Re-focus the textarea after dragging? Maybe not necessary.
       // Trigger the debounced clear in case focus was lost during drag
       this.clearTimelineEditDebounced();
     },
+    // --- Helper to get video duration ---
     getVideoDuration() {
       if (this.playerReady && typeof this.player.getDuration === 'function') {
         return this.player.getDuration();
@@ -595,29 +754,68 @@ const app = Vue.createApp({
   watch: {
     // --- 功能 2: 監聽 activeSubtitleId 變化並捲動 ---
     activeSubtitleId(newId, oldId) {
-      if (newId !== null) {
+      // --- 修正 DOMException: 加入日誌和 try-catch ---
+      console.log(
+        `Watcher triggered: newId=${newId} (type: ${typeof newId}), oldId=${oldId}`
+      );
+      if (newId !== null && typeof newId === 'string') {
+        // Ensure newId is a non-null string
         this.$nextTick(() => {
           const listElement = document.getElementById('subtitle-list');
-          // --- 修正 DOMException: 使用帶前綴的 ID ---
-          const activeElement = document.getElementById(newId); // ID 已經包含 'sub_' 前綴
-          // --- 結束修正 ---
-          if (activeElement && listElement) {
-            // Check if element is already fully visible
-            const listRect = listElement.getBoundingClientRect();
-            const activeRect = activeElement.getBoundingClientRect();
+          if (!listElement) {
+            console.warn(
+              'Watcher: Subtitle list element (#subtitle-list) not found.'
+            );
+            return;
+          }
+          try {
+            const activeElement = document.getElementById(newId);
+            console.log(
+              `Watcher trying to find element: #${newId}, Found: ${!!activeElement}`
+            );
+            if (activeElement) {
+              // Check if element is already fully visible
+              const listRect = listElement.getBoundingClientRect();
+              const activeRect = activeElement.getBoundingClientRect();
 
+              const isVisible =
+                activeRect.top >= listRect.top &&
+                activeRect.bottom <= listRect.bottom;
+
+              if (!isVisible) {
+                activeElement.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'nearest', // 'center', 'start', 'end', 'nearest'
+                });
+              }
+            } else {
+              console.warn(
+                `Watcher: Element with ID #${newId} not found in DOM.`
+              );
+            }
+          } catch (e) {
+            // Catch potential errors during getElementById or scrollIntoView
+            console.error(
+              `Error in activeSubtitleId watcher for ID #${newId}:`,
+              e
+            );
+            // Specifically check for the DOMException
             if (
-              activeRect.top < listRect.top ||
-              activeRect.bottom > listRect.bottom
+              e instanceof DOMException &&
+              e.message.includes('invalid character')
             ) {
-              activeElement.scrollIntoView({
-                behavior: 'smooth',
-                block: 'nearest', // 'center', 'start', 'end', 'nearest'
-              });
+              console.error(
+                `---> DOMException likely due to invalid character in ID: "${newId}"`
+              );
             }
           }
         });
+      } else if (newId !== null) {
+        console.warn(
+          `Watcher: newId is not a string: ${newId} (type: ${typeof newId})`
+        );
       }
+      // --- 結束修正 ---
     },
     // --- 結束 功能 2 ---
   },
@@ -626,19 +824,19 @@ const app = Vue.createApp({
     this.initializeYouTubeAPI();
     // Add global keyboard listener
     window.addEventListener('keydown', this.handleKeyDown);
-    // --- 功能 3: Add global mouseup listener for drag end outside window ---
-    // Note: This might conflict if other components use global mouseup
-    // A more robust solution might involve a temporary overlay during drag
-    // window.addEventListener('mouseup', this.handleTimelineDragEnd);
-    // Let's rely on the one added during drag start for now.
+    // Add ref to timeline bar for easier access in drag move
+    // Ensure the element exists in the template with ref="timelineBar"
+    // <div class="timeline-bar" ref="timelineBar">...</div>
   },
   beforeUnmount() {
     // Clean up global keyboard listener
     window.removeEventListener('keydown', this.handleKeyDown);
-    // --- 功能 3: Clean up potential global mouse listeners ---
-    document.removeEventListener('mousemove', this.handleTimelineDragMove);
-    document.removeEventListener('mouseup', this.handleTimelineDragEnd);
-    // window.removeEventListener('mouseup', this.handleTimelineDragEnd); // If global listener was added
+    // --- 功能 3: Clean up potential global mouse/touch listeners ---
+    // These are now added/removed specifically during drag, so no global cleanup needed here
+    // document.removeEventListener('mousemove', this.handleTimelineDragMove);
+    // document.removeEventListener('mouseup', this.handleTimelineDragEnd);
+    // document.removeEventListener('touchmove', this.handleTimelineDragMove);
+    // document.removeEventListener('touchend', this.handleTimelineDragEnd);
     if (this.clearTimelineTimeout) {
       clearTimeout(this.clearTimelineTimeout); // Clear any pending blur timeout
     }
@@ -654,7 +852,7 @@ const app = Vue.createApp({
     this.player = null;
     this.currentTimeInterval = null;
     // Remove the global function reference if safe (might affect other scripts if any)
-    // window.onYouTubeIframeAPIReady = null;
+    // window.onYouTubeIframeAPIReady = null; // Be careful if other scripts might rely on this
   },
 });
 
