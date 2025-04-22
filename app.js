@@ -126,9 +126,19 @@ function markTime(time) {
             // Avoid creating a new block if the time is exactly the end of a previous block
             const isAtEndOfPrevious = subtitles.some(sub => sub.end === time);
             if (!isAtEndOfPrevious) {
-                subtitles.push({ start: time, end: undefined });
-                currentSubtitleIndex = subtitles.length - 1; // Set the new block as active
+                const newSub = { start: time, end: undefined }; // Create the new subtitle object
+                subtitles.push(newSub);
                 subtitles.sort((a, b) => a.start - b.start); // Sort after adding
+
+                // --- FIX: Find the correct index of the newly added subtitle AFTER sorting ---
+                currentSubtitleIndex = subtitles.findIndex(sub => sub === newSub);
+                // If findIndex fails for some reason (shouldn't happen), fallback or log error
+                if (currentSubtitleIndex === -1) {
+                     console.error("Failed to find the newly added subtitle after sorting!");
+                     // Potentially reset to avoid incorrect marking:
+                     // currentSubtitleIndex = -1;
+                }
+
             } else {
                  console.log("Cannot start a new subtitle exactly at the end of another.");
             }
