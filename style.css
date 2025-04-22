@@ -101,12 +101,18 @@ h1, h2 {
 
 .subtitle-area li {
     background-color: #f9f9f9;
-    padding: 10px;
     margin-bottom: 5px;
     border: 1px solid #eee;
     border-radius: 4px;
-    cursor: pointer; /* Indicate items are clickable */
     padding: 8px 10px; /* Adjust padding */
+    display: flex; /* Use flexbox to align text and button */
+    justify-content: space-between; /* Push button to the right */
+    align-items: center; /* Vertically align items */
+}
+
+/* Apply cursor pointer only to the text part for seeking */
+.subtitle-area li span {
+     cursor: pointer;
 }
 
 .subtitle-area li:hover {
@@ -130,4 +136,20 @@ h1, h2 {
     background-color: #dff0d8; /* Light green background */
     border-color: #c3e6cb;
     font-weight: bold;
+}
+/* Style for the delete button */
+.delete-btn {
+    background: none;
+    border: none;
+    color: #dc3545; /* Red color */
+    font-size: 1.2em;
+    font-weight: bold;
+    cursor: pointer;
+    padding: 0 5px; /* Minimal padding */
+    line-height: 1; /* Ensure tight fit */
+    margin-left: 10px; /* Space between text and button */
+}
+
+.delete-btn:hover {
+    color: #a71d2a; /* Darker red on hover */
 }

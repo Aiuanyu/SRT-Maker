@@ -171,17 +171,54 @@ function renderSubtitleList() {
     subtitles.forEach((sub, index) => {
         const listItem = document.createElement('li');
         listItem.dataset.index = index; // Add data-index attribute
+
+        // Create span for the text content to allow button placement
+        const textSpan = document.createElement('span');
         const start = formatTime(sub.start);
         const end = sub.end !== undefined ? formatTime(sub.end) : '...';
-        listItem.textContent = `${index + 1}. ${start} --> ${end}`;
-        // Add click listener to seek video to subtitle start time
-        listItem.addEventListener('click', () => {
+        textSpan.textContent = `${index + 1}. ${start} --> ${end}`;
+        textSpan.style.flexGrow = '1'; // Allow text to take available space
+
+        // Add click listener to seek video to subtitle start time (on the text span)
+        textSpan.addEventListener('click', () => {
              if (player && player.seekTo) {
                  player.seekTo(sub.start, true);
              }
         });
+
+        // Create delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = '✕';
+        deleteBtn.classList.add('delete-btn');
+        deleteBtn.title = '刪除此字幕'; // Tooltip
+        deleteBtn.addEventListener('click', (event) => {
+            event.stopPropagation(); // Prevent li click event from firing
+            deleteSubtitle(index);
+        });
+
+        listItem.appendChild(textSpan);
+        listItem.appendChild(deleteBtn);
         listElement.appendChild(listItem);
     });
+}
+
+// Function to delete a subtitle entry
+function deleteSubtitle(indexToDelete) {
+    if (indexToDelete < 0 || indexToDelete >= subtitles.length) {
+        console.error("Invalid index for deletion:", indexToDelete);
+        return;
+    }
+
+    // If deleting the currently active marking block, reset the index
+    if (currentSubtitleIndex === indexToDelete) {
+        currentSubtitleIndex = -1;
+    } else if (currentSubtitleIndex > indexToDelete) {
+        // If deleting an item before the active one, adjust the active index
+        currentSubtitleIndex--;
+    }
+
+    subtitles.splice(indexToDelete, 1); // Remove the subtitle
+    renderSubtitleList(); // Re-render the list
 }
 
 // Function to sync subtitle list with video time
