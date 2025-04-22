@@ -75,3 +75,9 @@ h1, h2 {
 .subtitle-area button:hover {
     background-color: #025aa5;
 }
+/* Style for the currently active subtitle item */
+.subtitle-area li.active {
+    background-color: #dff0d8; /* Light green background */
+    border-color: #c3e6cb;
+    font-weight: bold;
+}

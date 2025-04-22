@@ -1,6 +1,7 @@
 let player;
 let subtitles = []; // Array to store subtitle objects { start: time, end: time }
 let currentSubtitleIndex = -1; // Index of the subtitle block currently being marked
+let timeUpdateInterval = null; // Interval timer for syncing subtitle list
 
 // This function creates an <iframe> (and YouTube player)
 // after the API code downloads.
@@ -25,6 +26,20 @@ function onPlayerReady(event) {
 // The API calls this function when the player's state changes.
 function onPlayerStateChange(event) {
     // console.log('Player state changed:', event.data);
+    if (event.data == YT.PlayerState.PLAYING) {
+        // Start interval when playing
+        if (timeUpdateInterval) clearInterval(timeUpdateInterval); // Clear existing interval if any
+        timeUpdateInterval = setInterval(syncSubtitleList, 250); // Check every 250ms
+    } else {
+        // Clear interval when paused, ended, buffering, etc.
+        if (timeUpdateInterval) clearInterval(timeUpdateInterval);
+        timeUpdateInterval = null;
+        // Optionally remove active class when paused/stopped
+        const activeItem = document.querySelector('#subtitle-list li.active');
+        if (activeItem) {
+            activeItem.classList.remove('active');
+        }
+    }
 }
 
 // Function to load video from URL
@@ -38,6 +53,9 @@ function loadVideo() {
             subtitles = []; // Reset subtitles for new video
             renderSubtitleList();
             currentSubtitleIndex = -1;
+            // Clear any existing sync interval
+            if (timeUpdateInterval) clearInterval(timeUpdateInterval);
+            timeUpdateInterval = null;
         } else {
             // If player is not yet initialized (shouldn't happen if API is ready)
             console.error('YouTube player not initialized.');
@@ -142,11 +160,58 @@ function renderSubtitleList() {
 
     subtitles.forEach((sub, index) => {
         const listItem = document.createElement('li');
+        listItem.dataset.index = index; // Add data-index attribute
         const start = formatTime(sub.start);
         const end = sub.end !== undefined ? formatTime(sub.end) : '...';
         listItem.textContent = `${index + 1}. ${start} --> ${end}`;
+        // Add click listener to seek video to subtitle start time
+        listItem.addEventListener('click', () => {
+             if (player && player.seekTo) {
+                 player.seekTo(sub.start, true);
+             }
+        });
         listElement.appendChild(listItem);
     });
+}
+
+// Function to sync subtitle list with video time
+function syncSubtitleList() {
+    if (!player || typeof player.getCurrentTime !== 'function' || subtitles.length === 0) {
+        return;
+    }
+
+    const currentTime = player.getCurrentTime();
+    let activeIndex = -1;
+
+    // Find the index of the subtitle that matches the current time
+    for (let i = 0; i < subtitles.length; i++) {
+        // Check if the subtitle block is complete and current time falls within it
+        if (subtitles[i].end !== undefined && currentTime >= subtitles[i].start && currentTime < subtitles[i].end) {
+            activeIndex = i;
+            break;
+        }
+        // Also consider the case where the user is marking the end time
+        if (i === currentSubtitleIndex && subtitles[i].end === undefined && currentTime >= subtitles[i].start) {
+             activeIndex = i;
+             break;
+        }
+    }
+
+    // Remove active class from previously active item
+    const currentlyActive = document.querySelector('#subtitle-list li.active');
+    if (currentlyActive) {
+        currentlyActive.classList.remove('active');
+    }
+
+    // Add active class to the current item and scroll into view
+    if (activeIndex !== -1) {
+        const activeItem = document.querySelector(`#subtitle-list li[data-index="${activeIndex}"]`);
+        if (activeItem) {
+            activeItem.classList.add('active');
+            // Scroll the item into view if it's not already visible
+            activeItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
 }
 
 // Helper function to format time in SRT format (HH:MM:SS,ms)
