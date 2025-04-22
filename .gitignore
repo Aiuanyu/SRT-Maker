@@ -1,1 +1,3 @@
-/.vscode
+.sync.ffs_db
+.vscode/settings.json
+SRT-Maker → localhost.ffs_gui

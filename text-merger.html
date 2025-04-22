@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SRT 文字合併工具</title>
+    <!-- 可以沿用原本的 style.css 或為此頁面建立新的樣式 -->
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* 增加 text-merger 頁面特定的樣式 */
+        body {
+            display: flex;
+            flex-direction: column; /* 讓標題在上面 */
+            height: 100vh;
+            margin: 0;
+            font-family: sans-serif; /* 基本字體 */
+        }
+
+        h1 {
+            text-align: center;
+            padding: 15px;
+            margin: 0 0 10px 0;
+            background-color: #f0f0f0; /* 標題背景色 */
+            border-bottom: 1px solid #ccc;
+        }
+
+        .merger-container {
+            display: flex;
+            flex-grow: 1; /* 佔滿剩餘空間 */
+            overflow: hidden; /* 防止 body 出現捲軸 */
+            padding: 0 10px 10px 10px; /* 容器邊距 */
+            gap: 10px; /* 欄位間距 */
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            flex: 1; /* 兩欄等寬 */
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            overflow: hidden; /* 確保內容超出時內部捲動 */
+            background-color: #fff; /* 欄位背景 */
+        }
+
+        .column-header {
+            padding: 10px;
+            border-bottom: 1px solid #ccc;
+            background-color: #f8f8f8; /* 欄位標頭背景 */
+        }
+
+        .column-content {
+            flex-grow: 1; /* 佔滿欄位剩餘空間 */
+            overflow-y: auto; /* 內容超出時垂直捲動 */
+            padding: 10px;
+            white-space: pre; /* 保留空白和換行，適合顯示程式碼或 SRT */
+            font-family: monospace; /* 使用等寬字體 */
+            line-height: 1.5; /* 增加行高以便閱讀 */
+        }
+
+        .column-footer {
+            padding: 10px;
+            border-top: 1px solid #ccc;
+            background-color: #f8f8f8; /* 欄位頁腳背景 */
+            text-align: center;
+        }
+
+        /* 隱藏原始的檔案輸入框，用按鈕觸發 */
+        input[type="file"] {
+            display: none;
+        }
+
+        /* 美化按鈕 */
+        button, .file-label {
+            padding: 8px 15px;
+            border: 1px solid #ccc;
+            background-color: #e7e7e7;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            font-size: 14px;
+        }
+
+        button:hover, .file-label:hover {
+            background-color: #ddd;
+        }
+
+        /* 文字檔內容的行號樣式 */
+        .line-number {
+            display: inline-block;
+            width: 40px; /* 行號寬度 */
+            text-align: right;
+            margin-right: 10px;
+            color: #888; /* 行號顏色 */
+            user-select: none; /* 防止選取行號 */
+        }
+        .line-content {
+             display: inline; /* 確保內容跟行號在同一行 */
+        }
+
+    </style>
+</head>
+<body>
+    <h1>SRT 文字合併工具</h1>
+
+    <div class="merger-container">
+        <!-- 左欄：SRT -->
+        <div class="column">
+            <div class="column-header">
+                <input type="file" id="srt-file-input" accept=".srt">
+                <label for="srt-file-input" class="file-label">選擇 SRT 檔案</label>
+                <span id="srt-filename" style="margin-left: 10px; font-style: italic;"></span>
+            </div>
+            <div class="column-content" id="srt-content">
+                <!-- SRT 內容將顯示在此 -->
+                請先選擇一個 SRT 檔案...
+            </div>
+            <div class="column-footer">
+                <button id="export-button" disabled>匯出合併文字的 SRT 檔案</button>
+            </div>
+        </div>
+
+        <!-- 右欄：文字檔 -->
+        <div class="column">
+            <div class="column-header">
+                <input type="file" id="text-file-input" accept=".txt, text/plain">
+                <label for="text-file-input" class="file-label">選擇文字檔案</label>
+                 <span id="txt-filename" style="margin-left: 10px; font-style: italic;"></span>
+            </div>
+            <div class="column-content" id="text-content">
+                <!-- 文字檔內容將顯示在此 -->
+                 請先選擇一個文字檔案...
+            </div>
+        </div>
+    </div>
+
+    <script src="text-merger.js"></script>
+</body>
+</html>
