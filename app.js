@@ -301,3 +301,4 @@ function exportSRT() {
 document.getElementById('load-video').addEventListener('click', loadVideo);
 document.getElementById('export-srt').addEventListener('click', exportSRT);
 document.addEventListener('keydown', handleKeyPress);
+
