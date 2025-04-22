@@ -8,11 +8,46 @@ h1, h2 {
     color: #333;
 }
 
+/* Remove bottom margin from individual areas as they are now in columns */
 .input-area, .video-area, .controls, .subtitle-area {
-    margin-bottom: 20px;
     padding: 15px;
     border: 1px solid #ddd;
     border-radius: 5px;
+    margin-bottom: 15px; /* Keep some margin between items in the same column */
+}
+
+/* Ensure last item in each column doesn't have bottom margin */
+.left-column > div:last-child,
+.right-column > div:last-child {
+    margin-bottom: 0;
+}
+
+/* Main container for two-column layout */
+.main-container {
+    display: flex;
+    gap: 20px; /* Space between columns */
+}
+
+/* Left column styling */
+.left-column {
+    flex: 0 0 70%; /* Takes up 70% width, doesn't grow or shrink */
+    display: flex;
+    flex-direction: column;
+}
+
+/* Right column styling */
+.right-column {
+    flex: 0 0 calc(30% - 20px); /* Takes up 30% width minus the gap, doesn't grow or shrink */
+    display: flex; /* Make it a flex container to manage its child */
+    flex-direction: column;
+}
+
+/* Make subtitle area fill the right column */
+.subtitle-area {
+    flex-grow: 1; /* Allow subtitle area to grow */
+    display: flex;
+    flex-direction: column; /* Stack title, list, button vertically */
+    min-height: 0; /* Necessary for flex children overflow */
 }
 
 .input-area input[type="text"] {
@@ -53,6 +88,15 @@ h1, h2 {
 .subtitle-area ul {
     list-style: none;
     padding: 0;
+    /* Make the list scrollable */
+    max-height: 400px; /* Match video height initially, adjust as needed */
+    overflow-y: auto; /* Enable vertical scrolling */
+    flex-grow: 1; /* Allow list to take available space */
+    min-height: 0; /* Necessary for flex children overflow */
+    border: 1px solid #eee; /* Add a border around the scrollable list */
+    border-radius: 4px;
+    margin-top: 10px; /* Space between title and list */
+    margin-bottom: 10px; /* Space between list and button */
 }
 
 .subtitle-area li {
@@ -61,6 +105,12 @@ h1, h2 {
     margin-bottom: 5px;
     border: 1px solid #eee;
     border-radius: 4px;
+    cursor: pointer; /* Indicate items are clickable */
+    padding: 8px 10px; /* Adjust padding */
+}
+
+.subtitle-area li:hover {
+    background-color: #eee; /* Add hover effect */
 }
 
 .subtitle-area button {

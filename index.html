@@ -9,33 +9,39 @@
 <body>
     <h1>SRT 字幕製作工具</h1>
 
-    <div class="input-area">
-        <label for="youtube-url">YouTube 影片網址:</label>
-        <input type="text" id="youtube-url" placeholder="請輸入 YouTube 影片網址">
-        <button id="load-video">載入影片</button>
-    </div>
+    <div class="main-container">
+        <div class="left-column">
+            <div class="input-area">
+                <label for="youtube-url">YouTube 影片網址:</label>
+                <input type="text" id="youtube-url" placeholder="請輸入 YouTube 影片網址">
+                <button id="load-video">載入影片</button>
+            </div>
 
-    <div class="video-area">
-        <!-- YouTube 影片將嵌入在此 -->
-        <div id="player"></div>
-    </div>
+            <div class="video-area">
+                <!-- YouTube 影片將嵌入在此 -->
+                <div id="player"></div>
+            </div>
 
-    <div class="controls">
-        <p>快捷鍵:</p>
-        <ul>
-            <li>空白鍵: 播放/暫停</li>
-            <li>左箭頭: 倒退 5 秒</li>
-            <li>右箭頭: 快轉 5 秒</li>
-            <li>Tab 鍵: 標記字幕區塊頭/尾</li>
-        </ul>
-    </div>
+            <div class="controls">
+                <p>快捷鍵:</p>
+                <ul>
+                    <li>空白鍵: 播放/暫停</li>
+                    <li>左箭頭: 倒退 5 秒</li>
+                    <li>右箭頭: 快轉 5 秒</li>
+                    <li>Tab 鍵: 標記字幕區塊頭/尾</li>
+                </ul>
+            </div>
+        </div>
 
-    <div class="subtitle-area">
-        <h2>字幕時間列表</h2>
-        <ul id="subtitle-list">
-            <!-- 字幕時間點將顯示在此 -->
-        </ul>
-        <button id="export-srt">匯出 SRT 檔案</button>
+        <div class="right-column">
+            <div class="subtitle-area">
+                <h2>字幕時間列表</h2>
+                <ul id="subtitle-list">
+                    <!-- 字幕時間點將顯示在此 -->
+                </ul>
+                <button id="export-srt">匯出 SRT 檔案</button>
+            </div>
+        </div>
     </div>
 
     <script src="https://www.youtube.com/iframe_api"></script>
