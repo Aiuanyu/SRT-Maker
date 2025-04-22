@@ -86,30 +86,52 @@ function handleKeyPress(event) {
 
 // Function to mark time points
 function markTime(time) {
-    // Find if the current time falls within any existing subtitle block
-    let foundIndex = subtitles.findIndex(sub => time >= sub.start && (sub.end === undefined || time <= sub.end));
+    // 1. Check if the time falls within a COMPLETED existing block
+    let splitIndex = subtitles.findIndex(sub => sub.end !== undefined && time > sub.start && time < sub.end);
 
-    if (foundIndex !== -1) {
-        // If marking within an existing block, split it
-        const existingSub = subtitles[foundIndex];
-        const newSub = { start: time, end: existingSub.end };
-        existingSub.end = time; // The existing block now ends at the marked time
-        subtitles.splice(foundIndex + 1, 0, newSub); // Insert the new block after the existing one
-        currentSubtitleIndex = foundIndex + 1; // Start marking the end of the new block
+    if (splitIndex !== -1) {
+        // --- Split the existing block ---
+        const originalSub = subtitles[splitIndex];
+        const newSub = { start: time, end: originalSub.end }; // New block starts at the marked time
+
+        originalSub.end = time; // Original block now ends at the marked time
+        subtitles.splice(splitIndex + 1, 0, newSub); // Insert the new block
+
+        // After splitting, no block is actively being marked
+        currentSubtitleIndex = -1;
+        subtitles.sort((a, b) => a.start - b.start); // Sort after modification
+
     } else {
-        // If not within an existing block, create a new one or mark end of the last one
-        if (currentSubtitleIndex === -1 || subtitles[currentSubtitleIndex].end !== undefined) {
-            // Create a new block (marking the start time)
-            subtitles.push({ start: time, end: undefined });
-            currentSubtitleIndex = subtitles.length - 1;
+        // --- Mark Start or End ---
+        if (currentSubtitleIndex === -1) {
+            // No active block, mark a new START time
+            // Avoid creating a new block if the time is exactly the end of a previous block
+            const isAtEndOfPrevious = subtitles.some(sub => sub.end === time);
+            if (!isAtEndOfPrevious) {
+                subtitles.push({ start: time, end: undefined });
+                currentSubtitleIndex = subtitles.length - 1; // Set the new block as active
+                subtitles.sort((a, b) => a.start - b.start); // Sort after adding
+            } else {
+                 console.log("Cannot start a new subtitle exactly at the end of another.");
+            }
+
         } else {
-            // Mark the end time of the current block
-            subtitles[currentSubtitleIndex].end = time;
-            // Sort subtitles by start time
-            subtitles.sort((a, b) => a.start - b.start);
-            currentSubtitleIndex = -1; // Reset index after completing a block
+            // Active block exists, mark the END time
+            const currentSub = subtitles[currentSubtitleIndex];
+            if (time > currentSub.start) {
+                currentSub.end = time;
+                currentSubtitleIndex = -1; // Deactivate marking
+                subtitles.sort((a, b) => a.start - b.start); // Sort after modification
+            } else {
+                // Attempting to mark end before start - ignore or handle as error
+                console.warn("End time cannot be earlier than start time.");
+                // Optionally, you could remove the invalid start marker:
+                // subtitles.splice(currentSubtitleIndex, 1);
+                // currentSubtitleIndex = -1;
+            }
         }
     }
+
     renderSubtitleList();
 }
 
