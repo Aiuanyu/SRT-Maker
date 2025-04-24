@@ -75,32 +75,56 @@ function getYouTubeVideoId(url) {
 
 // Function to handle keyboard shortcuts
 function handleKeyPress(event) {
+    // Check if focus is inside an input/textarea within the subtitle list
+    const activeElement = document.activeElement;
+    const isEditingSubtitle = activeElement &&
+                              (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA') &&
+                              activeElement.closest('#subtitle-list li');
+
+    // Allow Escape key globally to potentially unfocus elements (default browser behavior)
+    if (event.code === 'Escape') {
+        if (isEditingSubtitle) {
+             activeElement.blur(); // Explicitly blur the element on Escape
+        }
+        return; // Don't process Escape further here
+    }
+
     if (!player || !player.getCurrentTime) {
-        return; // Do nothing if player is not ready
+        return; // Do nothing if player is not ready for other keys
     }
 
     const currentTime = player.getCurrentTime();
 
-    switch (event.code) {
-        case 'Space':
-            event.preventDefault(); // Prevent default spacebar action (scrolling)
-            if (player.getPlayerState() === YT.PlayerState.PLAYING) {
-                player.pauseVideo();
-            } else {
-                player.playVideo();
-            }
-            break;
-        case 'ArrowLeft':
-            player.seekTo(currentTime - 5, true);
-            break;
-        case 'ArrowRight':
-            player.seekTo(currentTime + 5, true);
-            break;
-        case 'Tab':
-            event.preventDefault(); // Prevent default tab action
-            markTime(currentTime);
-            break;
+    // Only handle global shortcuts if not editing subtitles
+    if (!isEditingSubtitle) {
+        switch (event.code) {
+            case 'Space':
+                event.preventDefault(); // Prevent default spacebar action (scrolling)
+                if (player.getPlayerState() === YT.PlayerState.PLAYING) {
+                    player.pauseVideo();
+                } else {
+                    player.playVideo();
+                }
+                break;
+            case 'ArrowLeft':
+                 // Prevent default only if player control is active
+                event.preventDefault();
+                player.seekTo(currentTime - 5, true);
+                break;
+            case 'ArrowRight':
+                 // Prevent default only if player control is active
+                event.preventDefault();
+                player.seekTo(currentTime + 5, true);
+                break;
+            case 'Tab':
+                // Prevent default only if marking time
+                event.preventDefault();
+                markTime(currentTime);
+                break;
+        }
     }
+    // If isEditingSubtitle is true, the default browser behavior for Space, Arrows, Tab
+    // within the input/textarea will occur, which is what we want.
 }
 
 // Function to mark time points
