@@ -1,7 +1,8 @@
 let player;
-let subtitles = []; // Array to store subtitle objects { start: time, end: time }
+let subtitles = []; // Array to store subtitle objects { start: time, end: time, text: string }
 let currentSubtitleIndex = -1; // Index of the subtitle block currently being marked
 let timeUpdateInterval = null; // Interval timer for syncing subtitle list
+const srtFileInput = document.getElementById('srt-file-input');
 
 // This function creates an <iframe> (and YouTube player)
 // after the API code downloads.
@@ -110,9 +111,13 @@ function markTime(time) {
     if (splitIndex !== -1) {
         // --- Split the existing block ---
         const originalSub = subtitles[splitIndex];
-        const newSub = { start: time, end: originalSub.end }; // New block starts at the marked time
+        // Split text somewhat arbitrarily, user can edit later
+        const originalText = originalSub.text || '';
+        const splitPoint = Math.floor(originalText.length / 2);
+        const newSub = { start: time, end: originalSub.end, text: originalText.substring(splitPoint).trim() }; // New block starts at the marked time
 
         originalSub.end = time; // Original block now ends at the marked time
+        originalSub.text = originalText.substring(0, splitPoint).trim(); // Update original text
         subtitles.splice(splitIndex + 1, 0, newSub); // Insert the new block
 
         // After splitting, no block is actively being marked
@@ -126,7 +131,7 @@ function markTime(time) {
             // Avoid creating a new block if the time is exactly the end of a previous block
             const isAtEndOfPrevious = subtitles.some(sub => sub.end === time);
             if (!isAtEndOfPrevious) {
-                const newSub = { start: time, end: undefined }; // Create the new subtitle object
+                const newSub = { start: time, end: undefined, text: '' }; // Create the new subtitle object with empty text
                 subtitles.push(newSub);
                 subtitles.sort((a, b) => a.start - b.start); // Sort after adding
 
@@ -172,21 +177,55 @@ function renderSubtitleList() {
         const listItem = document.createElement('li');
         listItem.dataset.index = index; // Add data-index attribute
 
-        // Create span for the text content to allow button placement
-        const textSpan = document.createElement('span');
-        const start = formatTime(sub.start);
-        const end = sub.end !== undefined ? formatTime(sub.end) : '...';
-        textSpan.textContent = `${index + 1}. ${start} --> ${end}`;
-        textSpan.style.flexGrow = '1'; // Allow text to take available space
+        const timeContainer = document.createElement('div');
+        timeContainer.classList.add('time-container');
 
-        // Add click listener to seek video to subtitle start time (on the text span)
-        textSpan.addEventListener('click', () => {
-             if (player && player.seekTo) {
-                 player.seekTo(sub.start, true);
-             }
+        // Start Time Input
+        const startInput = document.createElement('input');
+        startInput.type = 'text';
+        startInput.value = formatTime(sub.start);
+        startInput.classList.add('time-input');
+        startInput.addEventListener('change', (e) => updateSubtitleTime(index, 'start', e.target.value));
+        startInput.addEventListener('click', (e) => { // Seek on click
+            e.stopPropagation(); // Prevent li click
+            if (player && player.seekTo) {
+                player.seekTo(sub.start, true);
+            }
         });
 
-        // Create delete button
+        // Arrow Span
+        const arrowSpan = document.createElement('span');
+        arrowSpan.textContent = ' --> ';
+        arrowSpan.classList.add('time-arrow');
+
+        // End Time Input
+        const endInput = document.createElement('input');
+        endInput.type = 'text';
+        endInput.value = sub.end !== undefined ? formatTime(sub.end) : '...';
+        endInput.classList.add('time-input');
+        if (sub.end === undefined) {
+            endInput.disabled = true; // Disable if end time not set
+        }
+        endInput.addEventListener('change', (e) => updateSubtitleTime(index, 'end', e.target.value));
+        endInput.addEventListener('click', (e) => { // Seek on click
+            e.stopPropagation(); // Prevent li click
+            if (player && player.seekTo && sub.end !== undefined) {
+                player.seekTo(sub.end, true);
+            }
+        });
+
+        timeContainer.appendChild(startInput);
+        timeContainer.appendChild(arrowSpan);
+        timeContainer.appendChild(endInput);
+
+        // Text Area
+        const textArea = document.createElement('textarea');
+        textArea.value = sub.text || ''; // Handle cases where text might be undefined initially
+        textArea.rows = 2; // Adjust as needed
+        textArea.classList.add('subtitle-text-input');
+        textArea.addEventListener('change', (e) => updateSubtitleText(index, e.target.value));
+
+        // Delete Button
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = '✕';
         deleteBtn.classList.add('delete-btn');
@@ -196,10 +235,63 @@ function renderSubtitleList() {
             deleteSubtitle(index);
         });
 
-        listItem.appendChild(textSpan);
+        // Create a container for time and text
+        const contentContainer = document.createElement('div');
+        contentContainer.style.display = 'flex'; // Use flex for vertical layout
+        contentContainer.style.flexDirection = 'column';
+        contentContainer.style.flexGrow = '1'; // Allow this container to take space
+        contentContainer.style.gap = '5px'; // Add gap between time and text
+
+        contentContainer.appendChild(timeContainer);
+        contentContainer.appendChild(textArea);
+
+        // Assemble List Item
+        listItem.appendChild(document.createTextNode(`${index + 1}. `)); // Add number
+        listItem.appendChild(contentContainer); // Add the container
         listItem.appendChild(deleteBtn);
+
         listElement.appendChild(listItem);
     });
+}
+
+// --- NEW: Function to update subtitle time from input ---
+function updateSubtitleTime(index, type, value) {
+    try {
+        const seconds = timeStringToSeconds(value);
+        if (isNaN(seconds)) throw new Error("Invalid time format");
+
+        if (type === 'start') {
+            // Basic validation: start time cannot be after end time
+            if (subtitles[index].end !== undefined && seconds >= subtitles[index].end) {
+                alert('開始時間不能晚於或等於結束時間。');
+                renderSubtitleList(); // Re-render to reset input
+                return;
+            }
+            subtitles[index].start = seconds;
+        } else if (type === 'end') {
+            // Basic validation: end time cannot be before start time
+            if (seconds <= subtitles[index].start) {
+                alert('結束時間不能早於或等於開始時間。');
+                renderSubtitleList(); // Re-render to reset input
+                return;
+            }
+            subtitles[index].end = seconds;
+        }
+        // Optional: Re-sort if times are changed significantly? For now, assume minor edits.
+        // subtitles.sort((a, b) => a.start - b.start);
+        // renderSubtitleList(); // Re-render might be needed if sorting happens
+    } catch (error) {
+        console.error("Error updating time:", error);
+        alert(`無效的時間格式: ${value}\n請使用 HH:MM:SS,ms 格式。`);
+        renderSubtitleList(); // Re-render to reset input to original value
+    }
+}
+
+// --- NEW: Function to update subtitle text from textarea ---
+function updateSubtitleText(index, text) {
+    if (index >= 0 && index < subtitles.length) {
+        subtitles[index].text = text;
+    }
 }
 
 // Function to delete a subtitle entry
@@ -282,7 +374,9 @@ function exportSRT() {
         if (sub.start !== undefined && sub.end !== undefined) {
             srtContent += `${index + 1}\n`;
             srtContent += `${formatTime(sub.start)} --> ${formatTime(sub.end)}\n`;
-            srtContent += `\n`; // Add an empty line for the subtitle text (placeholder)
+            // Ensure text is defined and handle potential multi-line text from textarea
+            const textContent = sub.text ? sub.text.replace(/\r\n/g, '\n') : ''; // Normalize newlines
+            srtContent += `${textContent}\n\n`; // Add text and an extra newline
         }
     });
 
@@ -301,4 +395,150 @@ function exportSRT() {
 document.getElementById('load-video').addEventListener('click', loadVideo);
 document.getElementById('export-srt').addEventListener('click', exportSRT);
 document.addEventListener('keydown', handleKeyPress);
+srtFileInput.addEventListener('change', handleFileSelect); // Add listener for file input
+
+// --- NEW: Function to handle file selection ---
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const content = e.target.result;
+        try {
+            subtitles = parseSRT(content);
+            subtitles.sort((a, b) => a.start - b.start); // Sort parsed subtitles
+            currentSubtitleIndex = -1; // Reset marking index
+            renderSubtitleList();
+            // Optionally load the video if a URL is present?
+            // Or clear the video? For now, just load subtitles.
+            if (player) {
+                 // Reset player state if needed
+                 // player.stopVideo();
+            }
+            alert(`${file.name} 已成功載入 ${subtitles.length} 條字幕。`);
+        } catch (error) {
+            console.error("Error parsing SRT file:", error);
+            alert(`讀取 SRT 檔案時發生錯誤: ${error.message}`);
+            subtitles = []; // Clear subtitles on error
+            renderSubtitleList();
+        } finally {
+             // Reset file input so the same file can be loaded again after modification
+             event.target.value = null;
+        }
+    };
+    reader.onerror = function(e) {
+         console.error("Error reading file:", e);
+         alert("讀取檔案時發生錯誤。");
+    };
+    reader.readAsText(file);
+}
+
+
+// --- NEW: Function to parse SRT content ---
+function parseSRT(content) {
+    const lines = content.replace(/\r\n/g, '\n').split('\n');
+    const subs = [];
+    let i = 0;
+    while (i < lines.length) {
+        // 1. Index line (optional, we'll re-index anyway)
+        const indexLine = lines[i].trim();
+        if (!indexLine) { // Skip empty lines between blocks
+            i++;
+            continue;
+        }
+        // Basic check if it looks like a number
+        if (!/^\d+$/.test(indexLine)) {
+             // Tolerate missing index lines if the next line looks like a timecode
+             if (!lines[i+1] || !lines[i+1].includes('-->')) {
+                console.warn(`Skipping invalid SRT block starting near line ${i + 1}. Expected index or timecode.`);
+                // Skip forward until a potential new block start (empty line or number)
+                while (i < lines.length && lines[i].trim() && !/^\d+$/.test(lines[i].trim())) {
+                    i++;
+                }
+                continue;
+             }
+             // If next line is timecode, assume index was missing
+        } else {
+            i++; // Move to next line if index was present
+        }
+
+
+        // 2. Timecode line
+        const timeLine = lines[i]?.trim();
+        if (!timeLine || !timeLine.includes('-->')) {
+            console.warn(`Skipping invalid SRT block near line ${i + 1}. Expected timecode.`);
+             // Skip forward until a potential new block start
+             while (i < lines.length && lines[i].trim()) {
+                 i++;
+             }
+            continue;
+        }
+        const timeParts = timeLine.split(' --> ');
+        if (timeParts.length !== 2) {
+             console.warn(`Skipping invalid SRT block near line ${i + 1}. Malformed timecode.`);
+              // Skip forward until a potential new block start
+             while (i < lines.length && lines[i].trim()) {
+                 i++;
+             }
+             continue;
+        }
+
+        let startSeconds, endSeconds;
+        try {
+            startSeconds = timeStringToSeconds(timeParts[0].trim());
+            endSeconds = timeStringToSeconds(timeParts[1].trim());
+            if (isNaN(startSeconds) || isNaN(endSeconds) || startSeconds >= endSeconds) {
+                 throw new Error("Invalid time values or order");
+            }
+        } catch (e) {
+            console.warn(`Skipping invalid SRT block near line ${i + 1}. ${e.message}`);
+             // Skip forward until a potential new block start
+             while (i < lines.length && lines[i].trim()) {
+                 i++;
+             }
+            continue;
+        }
+        i++;
+
+        // 3. Text lines
+        let textLines = [];
+        while (i < lines.length && lines[i]?.trim()) {
+            textLines.push(lines[i].trim());
+            i++;
+        }
+
+        subs.push({
+            start: startSeconds,
+            end: endSeconds,
+            text: textLines.join('\n')
+        });
+
+        // Skip empty line separating blocks (if any)
+        if (i < lines.length && !lines[i]?.trim()) {
+            i++;
+        }
+    }
+    return subs;
+}
+
+// --- NEW: Function to convert SRT time string to seconds ---
+function timeStringToSeconds(timeString) {
+    const parts = timeString.split(/[:,]/);
+    if (parts.length !== 4) {
+        throw new Error(`Invalid time format: "${timeString}"`);
+    }
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    const seconds = parseInt(parts[2], 10);
+    const milliseconds = parseInt(parts[3], 10);
+
+    if (isNaN(hours) || isNaN(minutes) || isNaN(seconds) || isNaN(milliseconds)) {
+        throw new Error(`Invalid time component in "${timeString}"`);
+    }
+
+    return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+}
 
