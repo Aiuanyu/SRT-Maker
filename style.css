@@ -101,19 +101,19 @@ h1, h2 {
 
 .subtitle-area li {
     background-color: #f9f9f9;
-    margin-bottom: 5px;
+    margin-bottom: 8px; /* Increase margin slightly */
     border: 1px solid #eee;
     border-radius: 4px;
-    padding: 8px 10px; /* Adjust padding */
-    display: flex; /* Use flexbox to align text and button */
-    justify-content: space-between; /* Push button to the right */
-    align-items: center; /* Vertically align items */
+    padding: 10px 12px; /* Adjust padding */
+    display: flex; /* Use flexbox for main layout */
+    align-items: flex-start; /* Align items to the top */
+    gap: 8px; /* Add gap between number, content, and button */
 }
 
-/* Apply cursor pointer only to the text part for seeking */
-.subtitle-area li span {
+/* Remove specific span cursor rule, handled by input click now */
+/* .subtitle-area li span {
      cursor: pointer;
-}
+} */
 
 .subtitle-area li:hover {
     background-color: #eee; /* Add hover effect */
@@ -152,4 +152,80 @@ h1, h2 {
 
 .delete-btn:hover {
     color: #a71d2a; /* Darker red on hover */
+}
+/* --- Styles for Editable Subtitle Items --- */
+
+.subtitle-area li > *:nth-child(1) { /* Style for the number */
+    flex-shrink: 0; /* Prevent number from shrinking */
+    padding-top: 5px; /* Align number better with first line of text */
+    font-weight: bold;
+}
+
+.subtitle-area li > *:nth-child(2) { /* Style for the time/text container */
+    flex-grow: 1; /* Allow content to take available space */
+    display: flex;
+    flex-direction: column;
+    gap: 5px; /* Space between time row and text area */
+}
+
+.time-container {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.time-input {
+    font-family: monospace; /* Use monospace font for time */
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    width: 110px; /* Fixed width for time inputs */
+    text-align: center;
+    font-size: 0.9em;
+    cursor: pointer; /* Indicate clickable for seeking */
+}
+
+.time-input:disabled {
+    background-color: #eee;
+    cursor: not-allowed;
+}
+
+.time-arrow {
+    font-weight: bold;
+}
+
+.subtitle-text-input {
+    width: 100%; /* Take full width of its container */
+    height: 7em;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-family: inherit; /* Use body font */
+    font-size: 0.95em;
+    resize: vertical; /* Allow vertical resize */
+    box-sizing: border-box; /* Include padding/border in width */
+}
+
+.delete-btn {
+    align-self: flex-start; /* Align button to the top */
+    margin-left: 0; /* Remove previous margin */
+    flex-shrink: 0; /* Prevent button from shrinking */
+}
+
+/* Style for the file input area */
+.file-input-area {
+    margin-bottom: 10px; /* Space below file input */
+    padding: 10px;
+    background-color: #f0f0f0;
+    border: 1px dashed #ccc;
+    border-radius: 4px;
+}
+
+.file-input-area label {
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.file-input-area input[type="file"] {
+    font-size: 0.9em;
 }
