@@ -137,13 +137,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     break;
 
                 case 'text':
-                    if (trimmedLine === '') {
-                        // 遇到空行，表示此字幕段落文字結束
+                    // 修改開始：淨有真正空白个行正代表文字結束
+                    if (line === '') { // 檢查原始行係毋係完全空白
                         state = 'index';
                     } else {
-                        // 附加文字行，如果已有文字則加上換行符
-                        currentSubtitle.text += (currentSubtitle.text ? '\n' : '') + line; // 保留原始行的前後空白
+                        // 任何非完全空白行（包含淨係空白字符个行）都係文字个一部分
+                        currentSubtitle.text += (currentSubtitle.text ? '\n' : '') + line;
                     }
+                    // 修改結束
                     break;
             }
         }
@@ -198,10 +199,25 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 0; i < subtitles.length; i++) {
             output += subtitles[i].index + '\n';
             output += subtitles[i].time + '\n';
-            // 如果文字檔中有對應行，則使用該行；否則保留 SRT 原本的文字（可能是空的）
-            output += (i < mergeCount ? lines[i] : subtitles[i].text) + '\n\n';
-        }
 
+            let mergedText = subtitles[i].text; // 先取得 SRT 原本的文字
+
+            if (i < mergeCount) { // 假使文字檔有對應个行
+                const textFileLine = lines[i];
+                // 只愛在文字檔个該行有實際內容 (毋係淨係空白) 个時節正處理
+                if (textFileLine.trim() !== '') {
+                    if (mergedText.trim() !== '') { // 假使 SRT 原本就有實際內容 (毋係淨係空白)
+                        mergedText += '\n' + textFileLine; // 加到後背
+                    } else { // 假使 SRT 原本係空个或者淨係空白
+                        mergedText = textFileLine; // 就用文字檔个行取代
+                    }
+                }
+                // 假使 textFileLine.trim() 係空个, mergedText (SRT 原本个文字) 就毋會變
+            }
+            // 假使 i >= mergeCount (文字檔行數較少), mergedText 也係維持 SRT 原本个文字
+
+            output += mergedText + '\n\n';
+        }
         return output.trim() + '\n'; // 確保結尾有換行符並移除多餘空白
     }
 
